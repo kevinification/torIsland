@@ -3,7 +3,7 @@
 stty -echoctl
 
 BRed='\033[1;31m' 
-NC='\033[0m' # No Color
+NC='\033[0m'
 BBlue='\033[1;34m'
 BGreen='\033[1;32m'
 
@@ -55,6 +55,7 @@ check_packages(){
 check_ip(){
 	torStatus=$(systemctl is-active tor.service)
 	if [ $torStatus = 'failed' ]; then echo -e "${BRed} [$(date +"%T")] Connectivity error detected  ${NC}"; reboot; return; 
+	elif [ $torStatus = 'inactive' ]; then tor_start; return;
 	else 
 		checkOnline=$(curl -Is http://www.google.com | head -1 | grep 200)
 		if [ -z "$checkOnline" ]; then 
@@ -121,27 +122,26 @@ tor_start(){
 	iptables -P INPUT ACCEPT 
 	iptables -P FORWARD ACCEPT 
 	iptables -P OUTPUT ACCEPT 
-	iptables -t nat -A OUTPUT -d $virtual_address -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports $trans_port  # nat .onion addresses
-	iptables -t nat -A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 53 -j REDIRECT --to-ports $dns_port   # nat dns requests to Tor
-	iptables -t nat -A OUTPUT -m owner --uid-owner $tor_uid -j RETURN  # Don't nat the Tor process, the loopback, or the local network
-	iptables -t nat -A OUTPUT -o lo -j RETURN  # Don't nat the Tor process, the loopback, or the local network   
-	for lan in $non_tor; do iptables -t nat -A OUTPUT -d $lan -j RETURN; done # Allow lan access for hosts in $non_tor
-	iptables -t nat -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports $trans_port # Redirects all other pre-routing and output to Tor's TransPort
-	iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT ## *filter INPUT
-	iptables -A INPUT -i lo -j ACCEPT ## *filter INPUT
-	iptables -A INPUT -j DROP # Drop everything else
-	iptables -A FORWARD -j DROP ## *filter FORWARD
-	iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP # Fix for potential kernel transproxy packet leaks
-	iptables -A OUTPUT -m state --state INVALID -j DROP # Fix for potential kernel transproxy packet leaks
-	iptables -A OUTPUT -m state --state ESTABLISHED -j ACCEPT # Fix for potential kernel transproxy packet leaks
-	iptables -A OUTPUT -m owner --uid-owner $tor_uid -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j ACCEPT # Allow Tor process output
-	iptables -A OUTPUT -d 127.0.0.1/32 -o lo -j ACCEPT  # Allow loopback output
-	iptables -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport $trans_port --tcp-flags FIN,SYN,RST,ACK SYN -j ACCEPT  # Tor transproxy magic
-	iptables -A OUTPUT -j DROP # Drop everything else
-	iptables -P INPUT DROP ## Set default policies to DROP
-	iptables -P FORWARD DROP ## Set default policies to DROP
-	iptables -P OUTPUT DROP ## Set default policies to DROP
-	#validate settings
+	iptables -t nat -A OUTPUT -d $virtual_address -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports $trans_port 
+	iptables -t nat -A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 53 -j REDIRECT --to-ports $dns_port 
+	iptables -t nat -A OUTPUT -m owner --uid-owner $tor_uid -j RETURN  
+	iptables -t nat -A OUTPUT -o lo -j RETURN   
+	for lan in $non_tor; do iptables -t nat -A OUTPUT -d $lan -j RETURN; done 
+	iptables -t nat -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports $trans_port 
+	iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT 
+	iptables -A INPUT -i lo -j ACCEPT 
+	iptables -A INPUT -j DROP 
+	iptables -A FORWARD -j DROP
+	iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP 
+	iptables -A OUTPUT -m state --state INVALID -j DROP 
+	iptables -A OUTPUT -m state --state ESTABLISHED -j ACCEPT 
+	iptables -A OUTPUT -m owner --uid-owner $tor_uid -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j ACCEPT 
+	iptables -A OUTPUT -d 127.0.0.1/32 -o lo -j ACCEPT  
+	iptables -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport $trans_port --tcp-flags FIN,SYN,RST,ACK SYN -j ACCEPT  
+	iptables -A OUTPUT -j DROP 
+	iptables -P INPUT DROP 
+	iptables -P FORWARD DROP 
+	iptables -P OUTPUT DROP
 	check_ip
 	echo -e "${BGreen} [$(date +"%T")] Tor Booted successfull ${NC}";
 }
@@ -156,7 +156,7 @@ tor_stop(){
 	iptables -A INPUT -p tcp ! --syn -m state --state NEW -j DROP
 	iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
 	iptables -A INPUT -i lo -j ACCEPT
-	iptables -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+	iptables -A INPUT -p tcp -m tcp --dport 22 -j DROP
 	iptables -I INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 	iptables -P OUTPUT ACCEPT
 	iptables -P INPUT DROP
@@ -209,16 +209,16 @@ help(){
 	echo ""
 	echo -e "${BBlue} [$(date +"%T")] ${NC} ${BGreen} List of Useful Commands ${NC}"
 	echo ""
-	echo -e "${BBlue} [$(date +"%T")] start, boot			Start Tor Network  ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] stop, shutdown		Stop Tor Network  ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] restart, reboot		Restart Tor Network  ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] check			Check Tor Network Ip Address ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] test			Test Tor Network Connectivity Status ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] change			Change Tor Network Ip Address ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] auto			Test Tor Network Connectivity and debug automatically using time range ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] exit			Stop Running The Script  ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] sexit			Stop Tor Network and Stop Running The Script  ${NC}"
-	echo -e "${BBlue} [$(date +"%T")] help			Get List Of All Useful Commands  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] start, boot, darknet		Start Tor Network  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] stop, shutdown, clearnet		Stop Tor Network  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] restart, reboot			Restart Tor Network  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] check				Check Tor Network Ip Address ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] test				Test Tor Network Connectivity Status ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] change				Change Tor Network Ip Address ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] auto				Test Tor Network Connectivity and debug automatically using time range ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] exit				Stop Running The Script  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] sexit				Stop Tor Network and Stop Running The Script  ${NC}"
+	echo -e "${BBlue} [$(date +"%T")] help				Get List Of All Useful Commands  ${NC}"
 	echo ""
 }
 
@@ -237,9 +237,9 @@ check_ip
 starTime=$(date +%s%N);
 while :
 do
-	read -p "-tor-$ " commandLine
-	if [[ $commandLine = "start" || $commandLine = "boot" ]]; then tor_start;
-	elif [[ $commandLine = "stop" || $commandLine = "shutdown" ]]; then tor_stop;
+	read -p "└─(command)─> " commandLine
+	if [[ $commandLine = "start" || $commandLine = "boot" || $commandLine = "darknet"  ]]; then tor_start;
+	elif [[ $commandLine = "stop" || $commandLine = "shutdown" || $commandLine = "clearnet" ]]; then tor_stop;
 	elif [[ $commandLine = "reboot" || $commandLine = "restart" ]]; then reboot;
 	elif [[ $commandLine = "check" ]]; then check_ip; 
 	elif [[ $commandLine = "test" ]]; then checkConnectivity;
