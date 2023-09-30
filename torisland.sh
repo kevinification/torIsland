@@ -12,7 +12,7 @@ trap ''  QUIT
 trap ''  TSTP
 trap 'echo -e "${BBlue} [$(date +"%T")] ${NC} ${BGreen} GoodBye! ${NC}"' EXIT
 
-readonly homeCountry='Kenya' 
+readonly homeCountry='<your_country>' 
 readonly virtual_address="10.192.0.0/10" 
 readonly trans_port="9040" 
 readonly dns_port="5353" 
@@ -219,6 +219,10 @@ help(){
 	echo -e "${BBlue} [$(date +"%T")] exit				Stop Running The Script  ${NC}"
 	echo -e "${BBlue} [$(date +"%T")] sexit				Stop Tor Network and Stop Running The Script  ${NC}"
 	echo -e "${BBlue} [$(date +"%T")] help				Get List Of All Useful Commands  ${NC}"
+	echo ""
+	echo ""
+	echo -e "${BBlue} [$(date +"%T")] Incase of network issues you can also debug using: sudo service NetworkManager restart ${NC}"
+	echo ""
 	echo ""
 }
 

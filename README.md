@@ -14,6 +14,14 @@
 
 #### readonly homeCountry=<your_country>
 
+#### you can use https://dnsleaktest.com/ to retrieve the correct spellings
+
+## Before running the script make sure you backup these 2 file:
+### /etc/tor/torrc
+### /etc/resolv.conf
+
+
 ## Kelvinification
 ### torIsland
 #### https://github.com/kevinification/torIsland.git
+### Version 7.4
